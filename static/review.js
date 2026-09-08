@@ -155,11 +155,22 @@
     const groupBy = groupBySelect.value;
     const showReviewed = showReviewedToggle.checked ? '1' : '0';
     groupsContainer.textContent = 'Loading...';
+    const params = new URLSearchParams({
+      root_id: rootId, group_by: groupBy, show_reviewed: showReviewed,
+      page: currentPage, page_size: PAGE_SIZE,
+    });
+    const minSimEl = document.getElementById('filter-min-similarity');
+    if (minSimEl && minSimEl.value) params.set('min_similarity', minSimEl.value);
+    const fFromEl = document.getElementById('filter-file-date-from');
+    if (fFromEl && fFromEl.value) params.set('file_date_from', fFromEl.value);
+    const fToEl = document.getElementById('filter-file-date-to');
+    if (fToEl && fToEl.value) params.set('file_date_to', fToEl.value);
+    const eFromEl = document.getElementById('filter-exif-date-from');
+    if (eFromEl && eFromEl.value) params.set('exif_date_from', eFromEl.value);
+    const eToEl = document.getElementById('filter-exif-date-to');
+    if (eToEl && eToEl.value) params.set('exif_date_to', eToEl.value);
     try {
-      const res = await fetch(
-        `/api/groups?root_id=${rootId}&group_by=${groupBy}&show_reviewed=${showReviewed}` +
-        `&page=${currentPage}&page_size=${PAGE_SIZE}`
-      );
+      const res = await fetch(`/api/groups?${params.toString()}`);
       const data = await res.json();
       renderGroups(data.groups, groupBy);
       renderPager(data);
@@ -258,12 +269,13 @@
       headerCell.colSpan = 7;
       const total = g.total_members || g.files.length;
       const countLabel = g.truncated ? `${g.files.length} of ${total.toLocaleString()} shown` : `${total.toLocaleString()}`;
+      const simText = g.similarity_percent != null ? ` · ${g.similarity_percent}% similarity` : '';
       if (groupBy === 'date') {
-        headerCell.textContent = `Date: ${g.key} (${countLabel} photos)`;
+        headerCell.textContent = `Date: ${g.key} (${countLabel} photos)${simText}`;
       } else if (groupBy === 'filename') {
-        headerCell.textContent = `Filename: ${g.key} (${countLabel} copies)`;
+        headerCell.textContent = `Filename: ${g.key} (${countLabel} copies)${simText}`;
       } else {
-        headerCell.textContent = `Duplicate group #${g.key} (${countLabel} copies)`;
+        headerCell.textContent = `Duplicate group #${g.key} (${countLabel} copies)${simText}`;
       }
       if (g.truncated) {
         const notice = document.createElement('span');
@@ -323,7 +335,9 @@
 
     const fileDateCell = document.createElement('td');
     fileDateCell.className = 'num-cell';
-    fileDateCell.textContent = formatDate(f.exif_datetime);
+    fileDateCell.textContent = f.mtime
+      ? formatDate(new Date(f.mtime * 1000).toISOString().slice(0, 16).replace('T', ' '))
+      : '—';
 
     const dimsCell = document.createElement('td');
     dimsCell.className = 'num-cell';
@@ -424,6 +438,18 @@
       (data.warnings.length ? ` ${data.warnings.length} warning(s) — see console.` : '');
     if (data.warnings.length) console.warn('Session import warnings:', data.warnings);
     loadGroups();
+  });
+
+  const applyFiltersBtn = document.getElementById('apply-filters-btn');
+  const resetFiltersBtn = document.getElementById('reset-filters-btn');
+  if (applyFiltersBtn) applyFiltersBtn.addEventListener('click', resetToFirstPage);
+  if (resetFiltersBtn) resetFiltersBtn.addEventListener('click', () => {
+    document.getElementById('filter-min-similarity').value = '';
+    document.getElementById('filter-file-date-from').value = '';
+    document.getElementById('filter-file-date-to').value = '';
+    document.getElementById('filter-exif-date-from').value = '';
+    document.getElementById('filter-exif-date-to').value = '';
+    resetToFirstPage();
   });
 
   restartPolling();

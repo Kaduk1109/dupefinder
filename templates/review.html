@@ -87,6 +87,25 @@
           <input type="file" id="import-input" accept="application/json">
         </label>
       </div>
+      <div class="toolbar filters-toolbar">
+        <label>Мин. схожесть, %
+          <input type="number" id="filter-min-similarity" min="0" max="100" step="0.1" placeholder="напр. 80">
+        </label>
+        <label>Дата файла (mtime) от
+          <input type="date" id="filter-file-date-from">
+        </label>
+        <label>до
+          <input type="date" id="filter-file-date-to">
+        </label>
+        <label>Дата съёмки (EXIF) от
+          <input type="date" id="filter-exif-date-from">
+        </label>
+        <label>до
+          <input type="date" id="filter-exif-date-to">
+        </label>
+        <button id="apply-filters-btn">Применить фильтр</button>
+        <button id="reset-filters-btn" class="btn-secondary">Сбросить</button>
+      </div>
       <p id="review-msg" class="msg"></p>
       <div id="groups-container">Loading results...</div>
       <div class="pager" id="pager" style="display:none;">

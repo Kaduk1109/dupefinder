@@ -17,6 +17,10 @@ import time
 from flask import Flask, request, jsonify, render_template, send_file, abort, Response
 
 import config
+from itertools import combinations
+from hashing import hamming_distance
+
+HASH_BITS = 64
 import db
 import preview
 import session_io
@@ -186,7 +190,7 @@ def api_scan_stop(scan_id):
 # ----------------------------------------------------------- results API ---
 
 FILE_COLUMNS = """
-    f.id, f.path, f.rel_path, f.size, f.width, f.height,
+    f.id, f.path, f.rel_path, f.size, f.width, f.height, f.mtime, f.phash,
     f.exif_date, f.exif_date_raw, f.exif_datetime, f.exif_datetime_raw,
     COALESCE(rs.marked_for_delete, 0) AS marked_for_delete,
     COALESCE(rs.reviewed, 0) AS reviewed
@@ -204,6 +208,17 @@ MAX_PAGE_SIZE = 200
 MAX_GROUP_ROWS = 100  # per-group cap within a page (see WITH ranked... below);
                       # protects against one pathologically large group (e.g.
                       # thousands of files all named IMG_0001.jpg)
+
+
+def _group_similarity_percent(files):
+    """Diameter-based similarity: 100% only if every pair in the group is
+    identical; uses the MAX (not average) pairwise Hamming distance so a
+    single loosely-matching bridge file is visible immediately."""
+    hashes = [f["phash"] for f in files if f.get("phash")]
+    if len(hashes) < 2:
+        return 100.0
+    max_dist = max(hamming_distance(a, b) for a, b in combinations(hashes, 2))
+    return round((1 - max_dist / HASH_BITS) * 100, 1)
 
 
 def _paginate(request):
@@ -359,6 +374,46 @@ def api_groups():
             f["folder"] = os.path.dirname(f["path"])
             f.pop("rn", None)
 
+    min_similarity = request.args.get("min_similarity", type=float)
+    file_date_from = request.args.get("file_date_from")
+    file_date_to = request.args.get("file_date_to")
+    exif_date_from = request.args.get("exif_date_from")
+    exif_date_to = request.args.get("exif_date_to")
+
+    similarity_by_key = {}
+    for k in list(groups.keys()):
+        members = groups[k]
+        sim = _group_similarity_percent(members)
+        similarity_by_key[k] = sim
+        if min_similarity is not None and sim < min_similarity:
+            del groups[k]
+            continue
+
+        def _keep(f):
+            if file_date_from or file_date_to:
+                if not f.get("mtime"):
+                    return False
+                mtime_str = time.strftime("%Y-%m-%d", time.localtime(f["mtime"]))
+                if file_date_from and mtime_str < file_date_from:
+                    return False
+                if file_date_to and mtime_str > file_date_to:
+                    return False
+            if exif_date_from or exif_date_to:
+                exif_str = (f.get("exif_datetime_raw") or "")[:10]
+                if not exif_str:
+                    return False
+                if exif_date_from and exif_str < exif_date_from:
+                    return False
+                if exif_date_to and exif_str > exif_date_to:
+                    return False
+            return True
+
+        if file_date_from or file_date_to or exif_date_from or exif_date_to:
+            groups[k] = [f for f in members if _keep(f)]
+            if len(groups[k]) < 2:
+                del groups[k]
+                del similarity_by_key[k]
+
     return jsonify({
         "group_by": group_by,
         "page": page,
@@ -371,6 +426,7 @@ def api_groups():
                 "files": v,
                 "total_members": counts_by_key.get(k, len(v)),
                 "truncated": counts_by_key.get(k, len(v)) > len(v),
+                "similarity_percent": similarity_by_key.get(k),
             }
             for k, v in groups.items()
         ],

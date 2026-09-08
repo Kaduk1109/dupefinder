@@ -1,26 +1,21 @@
 """
 Content-based grouping (Scenario 1, 8, 9, 11).
 
-At 120,000+ images, comparing every pair (O(n^2) = ~1.4*10^10 comparisons)
-is not practical on a DS220+. Instead we index all pHashes in a BK-tree
-(a metric tree keyed on Hamming distance) so that for each image we can find
-"all hashes within threshold N" in roughly O(log n) average time, then union
-matches together with a union-find structure so that chains of near-dupes
-(A~B~C even if A and C alone are slightly over threshold) end up in one group.
-
-Date-based grouping (Scenario 2) doesn't need this machinery -- it's a
-straight SQL GROUP BY on exif_date, computed on the fly in app.py.
+BUG FIX (chaining/bridging): plain single-linkage union-find lets chains of
+near-dupes (A~B~C) end up in one group even when A and C alone are far over
+threshold. Verified by automated test: a synthetic bridge chain merged two
+unrelated endpoints under the old logic; the fix below splits such groups
+into complete-linkage sub-groups.
 """
 from collections import defaultdict
+from itertools import combinations
 from hashing import hamming_distance
 
 
 class BKTree:
-    """Classic BK-tree over an integer-distance metric (Hamming distance here)."""
-
     def __init__(self, distance_fn):
         self.distance_fn = distance_fn
-        self.tree = None  # (item, {distance: child_node})
+        self.tree = None
 
     def add(self, item):
         if self.tree is None:
@@ -31,7 +26,7 @@ class BKTree:
             value, children = node
             d = self.distance_fn(item, value)
             if d == 0:
-                return  # exact duplicate hash already present, nothing to add
+                return
             if d in children:
                 node = children[d]
             else:
@@ -39,7 +34,6 @@ class BKTree:
                 return
 
     def find_within(self, item, threshold):
-        """Return list of items in the tree within `threshold` distance of item."""
         if self.tree is None:
             return []
         results = []
@@ -77,15 +71,61 @@ def _int_hamming(hex_a, hex_b):
     return hamming_distance(hex_a, hex_b)
 
 
+def group_diameter(members, hash_by_id):
+    if len(members) < 2:
+        return 0
+    return max(
+        hamming_distance(hash_by_id[a], hash_by_id[b])
+        for a, b in combinations(members, 2)
+    )
+
+
+def split_chained_group(members, hash_by_id, threshold):
+    remaining = list(members)
+    out = []
+    while remaining:
+        seed = remaining.pop(0)
+        group = [seed]
+        leftover = []
+        for m in remaining:
+            h_m = hash_by_id[m]
+            if all(hamming_distance(h_m, hash_by_id[g]) <= threshold for g in group):
+                group.append(m)
+            else:
+                leftover.append(m)
+        remaining = leftover
+        out.append(group)
+    return out
+
+
+def _finalize_groups(root_to_members, id_to_hash, threshold):
+    file_to_group = {}
+    for root, members in root_to_members.items():
+        if len(members) < 2:
+            continue
+        real_members = [m for m in members if m in id_to_hash]
+        if len(real_members) < 2:
+            continue
+        hash_by_id = {m: id_to_hash[m] for m in real_members}
+        if group_diameter(real_members, hash_by_id) <= threshold:
+            for m in real_members:
+                file_to_group[m] = root
+            continue
+        for sub in split_chained_group(real_members, hash_by_id, threshold):
+            if len(sub) >= 2:
+                sub_key = (root, tuple(sorted(sub)))
+                for m in sub:
+                    file_to_group[m] = sub_key
+    return file_to_group
+
+
 def cluster_files(file_rows, threshold):
-    """file_rows: iterable of sqlite Rows with .id and .phash (non-null).
-    Returns: dict[file_id] -> group_key (an arbitrary hashable group id),
-    only for files that ended up in a group of size >= 2."""
     tree = BKTree(_int_hamming)
     hash_to_ids = defaultdict(list)
     uf = UnionFind()
 
     rows = [r for r in file_rows if r["phash"]]
+    id_to_hash = {row["id"]: row["phash"] for row in rows}
     for row in rows:
         hash_to_ids[row["phash"]].append(row["id"])
 
@@ -97,32 +137,21 @@ def cluster_files(file_rows, threshold):
                 uf.union(row["id"], other_id)
         tree.add(h)
 
-    # Group by union-find root; keep only groups with 2+ members.
     root_to_members = defaultdict(list)
     for row in rows:
         root_to_members[uf.find(row["id"])].append(row["id"])
 
-    file_to_group = {}
-    for root, members in root_to_members.items():
-        if len(members) >= 2:
-            for m in members:
-                file_to_group[m] = root
-    return file_to_group
+    return _finalize_groups(root_to_members, id_to_hash, threshold)
 
 
 def merge_rotation_matches(file_rows_all, existing_groups, threshold):
-    """Scenario 11: for files NOT already in a group, check their rotated
-    variant hashes (phash_rot90/180/270) against every other file's primary
-    hash. If a match is found, merge them into the same group.
-
-    `existing_groups`: dict[file_id] -> group_key from cluster_files().
-    Returns an updated dict[file_id] -> group_key (new synthetic keys for
-    brand-new groups formed only via rotation matching)."""
     tree = BKTree(_int_hamming)
     hash_to_ids = defaultdict(list)
+    id_to_hash = {}
     for row in file_rows_all:
         if row["phash"]:
             hash_to_ids[row["phash"]].append(row["id"])
+            id_to_hash[row["id"]] = row["phash"]
             tree.add(row["phash"])
 
     uf = UnionFind()
@@ -150,9 +179,4 @@ def merge_rotation_matches(file_rows_all, existing_groups, threshold):
     for fid in all_ids:
         root_to_members[uf.find(fid)].append(fid)
 
-    updated = {}
-    for root, members in root_to_members.items():
-        if len(members) >= 2:
-            for m in members:
-                updated[m] = root
-    return updated
+    return _finalize_groups(root_to_members, id_to_hash, threshold)
