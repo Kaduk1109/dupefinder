@@ -1,0 +1,28 @@
+services:
+  dupefinder:
+    build: .
+    container_name: dupefinder
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    volumes:
+      # --- EDIT THESE TWO LINES for your NAS ---
+      # Left side = real path on the NAS (Control Panel > Shared Folder, or
+      # File Station's path). Right side = the SAME path inside the
+      # container -- keeping them identical means whatever path you see in
+      # File Station is exactly what you type into the app's "folder" field.
+      - /volume1/photo:/volume1/photo
+      # Where the SQLite DB, logs, and (if you use it) session-export files
+      # live. Put this under a persistent shared folder, NOT inside the
+      # project folder that Container Manager manages, so it survives a
+      # rebuild.
+      - /volume1/docker/dupefinder/app_data:/data
+    environment:
+      - DUPEFINDER_DATA_DIR=/data
+      # Optional: fill these in to get email on scan completion (Scenario 4).
+      # Leave blank to keep using the log file + desktop-notify fallback.
+      - DUPEFINDER_SMTP_HOST=
+      - DUPEFINDER_SMTP_PORT=587
+      - DUPEFINDER_SMTP_USER=
+      - DUPEFINDER_SMTP_PASSWORD=
+      - DUPEFINDER_NOTIFY_EMAIL=

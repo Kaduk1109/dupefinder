@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Review — {{ root.path }}</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body data-root-id="{{ root.id }}" data-scan-id="{{ scan.id if scan else '' }}"
+      data-root-path="{{ root.path }}" data-rotation-pass="{{ '1' if scan and scan.rotation_pass else '0' }}">
+  <div class="wrap wrap--wide">
+    <p><a href="/">&larr; back</a></p>
+    <h1>Reviewing: {{ root.path }}</h1>
+
+    <section class="card" id="progress-card">
+      <h2>Scan progress</h2>
+      <div class="progress-bar-outer">
+        <div class="progress-bar-inner" id="progress-bar-inner" style="width:0%"></div>
+      </div>
+      <p id="progress-text">Loading...</p>
+      <div class="toolbar">
+        <button id="stop-scan-btn" class="btn-warning" style="display:none">Stop scan</button>
+        <button id="resume-scan-btn" style="display:none">Resume scan</button>
+      </div>
+    </section>
+
+    <section class="card sticky-preview" id="preview-card">
+      <h2>Preview</h2>
+      <p class="hint">Hover a row below to preview it here; double-click a row to open it full size in a new tab (use &larr;/&rarr; there to flip through the group).</p>
+      <div class="preview-panel">
+        <div class="preview-slot">
+          <div class="preview-label">Previous</div>
+          <img id="preview-previous-img" alt="">
+          <div class="preview-caption" id="preview-previous-caption"></div>
+        </div>
+        <div class="preview-slot">
+          <div class="preview-label">Current</div>
+          <img id="preview-current-img" alt="">
+          <div class="preview-caption" id="preview-current-caption"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card" id="summary-card" style="display:none;">
+      <h2>Summary</h2>
+      <div class="summary-grid">
+        <div class="summary-item">
+          <span class="summary-number" id="summary-groups">–</span>
+          <span class="summary-label">duplicate groups</span>
+        </div>
+        <div class="summary-item">
+          <span class="summary-number" id="summary-extra">–</span>
+          <span class="summary-label">extra copies</span>
+        </div>
+        <div class="summary-item">
+          <span class="summary-number" id="summary-space">–</span>
+          <span class="summary-label">reclaimable space</span>
+        </div>
+        <div class="summary-item">
+          <span class="summary-number" id="summary-marked">–</span>
+          <span class="summary-label">currently marked</span>
+        </div>
+        <div class="summary-item">
+          <span class="summary-number" id="summary-trashed">–</span>
+          <span class="summary-label">already in Trash</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Duplicates</h2>
+      <div class="toolbar">
+        <label>Group by:
+          <select id="group-by">
+            <option value="content">Content (default)</option>
+            <option value="date">Date taken</option>
+            <option value="filename">Filename</option>
+          </select>
+        </label>
+        <label class="checkbox">
+          <input type="checkbox" id="show-reviewed-toggle">
+          Show already-reviewed (hidden) items
+        </label>
+        <button id="delete-btn">Move marked to Trash</button>
+        <button id="hide-btn" class="btn-secondary">Hide marked from results</button>
+        <a id="export-link" href="#">Save session</a>
+        <label class="file-btn">Load session
+          <input type="file" id="import-input" accept="application/json">
+        </label>
+      </div>
+      <p id="review-msg" class="msg"></p>
+      <div id="groups-container">Loading results...</div>
+      <div class="pager" id="pager" style="display:none;">
+        <button id="pager-prev">&larr; Prev</button>
+        <span id="pager-status"></span>
+        <button id="pager-next">Next &rarr;</button>
+      </div>
+    </section>
+  </div>
+
+  <script src="/static/review.js"></script>
+</body>
+</html>

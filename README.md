@@ -1,10 +1,8 @@
 # Duplicate Image Finder
 
-This is a pet project created with Claude Sonnet 5
-
 A background scanner + web review app for finding duplicate/near-duplicate
 photos (including resized and rotated copies) across a large photo library,
-built for a Synology DS220+ (6 GB RAM, DSM 7.4.1). 
+built for a Synology DS220+ (6 GB RAM, DSM 7.4.1).
 
 ## How it's split, and why
 

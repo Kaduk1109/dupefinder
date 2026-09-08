@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Duplicate Image Finder</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="wrap">
+    <h1>Duplicate Image Finder</h1>
+
+    <section class="card">
+      <h2>Scan a folder</h2>
+      <form id="scan-form">
+        <label>Folder path
+          <input type="text" name="folder" placeholder="/volume1/photo" required>
+        </label>
+        <label class="checkbox">
+          <input type="checkbox" name="rotation_pass">
+          Also check for photos rotated by re-encoding pixels (slower)
+        </label>
+        <button type="submit">Start scan</button>
+      </form>
+      <p id="scan-form-msg" class="msg"></p>
+    </section>
+
+    <section class="card">
+      <h2>Previously scanned folders</h2>
+      {% if roots %}
+      <table class="simple">
+        <thead><tr><th>Folder</th><th>Last scan status</th><th></th></tr></thead>
+        <tbody>
+          {% for r in roots %}
+          <tr>
+            <td>{{ r.path }}</td>
+            <td>{{ r.last_scan_status or "never scanned" }}</td>
+            <td><a href="/review/{{ r.id }}">Open review</a></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <p>No folders scanned yet.</p>
+      {% endif %}
+    </section>
+  </div>
+
+  <script>
+    document.getElementById('scan-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const form = e.target;
+      const folder = form.folder.value.trim();
+      const rotation_pass = form.rotation_pass.checked;
+      const msg = document.getElementById('scan-form-msg');
+      msg.textContent = 'Starting scan...';
+      try {
+        const res = await fetch('/api/scan/start', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({folder, rotation_pass})
+        });
+        const data = await res.json();
+        if (!res.ok) { msg.textContent = 'Error: ' + data.error; return; }
+        window.location.href = '/review/' + data.root_id + '?scan_id=' + data.scan_id;
+      } catch (err) {
+        msg.textContent = 'Error: ' + err;
+      }
+    });
+  </script>
+</body>
+</html>

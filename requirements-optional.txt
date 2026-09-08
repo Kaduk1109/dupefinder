@@ -1,0 +1,6 @@
+# Optional format support -- see Dockerfile, which installs these
+# best-effort (a failure here doesn't fail the image build). Without them,
+# HEIC/DNG files are simply skipped with a clear error in scanner.log
+# instead of the app crashing.
+pillow-heif>=0.15   # HEIC/HEIF decoding
+rawpy>=0.19         # DNG (and other camera raw) decoding
